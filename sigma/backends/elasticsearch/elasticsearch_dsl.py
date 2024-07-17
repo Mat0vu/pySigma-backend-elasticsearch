@@ -36,7 +36,7 @@ from typing import ClassVar, Dict, Tuple, Pattern, List, Any, Optional
 file_path = os.path.abspath(__file__)
 
 
-class DSLBackend(JSONQueryBackend):
+class DSLBackend(TextQueryBackend):
     """Elasticsearch DSL query language backend. Generates JSON queries described here in the Elasticsearch documentation:
 
     https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl.html
@@ -114,7 +114,7 @@ class DSLBackend(JSONQueryBackend):
     str_quote_pattern_negation: ClassVar[bool] = True  # Negate str_quote_pattern result
     ### String escaping and filtering
     escape_char: ClassVar[Optional[str]] = (
-        "\\\\"  # Escaping character for special characters inside string
+        "\\"  # Escaping character for special characters inside string
     )
     wildcard_multi: ClassVar[Optional[str]] = (
         ".*"  # Character used as multi-character wildcard
@@ -156,8 +156,8 @@ class DSLBackend(JSONQueryBackend):
         '{{"regexp": {{ "{field}": "{regex}", "case_insensitive": "true" }} }}'
     )
     # Character used for escaping in regular expressions
-    re_escape_char: ClassVar[str] = r"\\"
-    re_escape: ClassVar[Tuple[str]] = ("/",)
+    re_escape_char: ClassVar[str] = "\\"
+    re_escape: ClassVar[Tuple[str]] = ("\\",)
     # escape the escape char
     re_escape_escape_char: ClassVar[bool] = True
     re_flag_prefix: bool = (
@@ -167,15 +167,9 @@ class DSLBackend(JSONQueryBackend):
     # flag_x placeholders in re_expression template.
     # By default, i, m and s are defined. If a flag is not supported by the target query language,
     # remove it from re_flags or don't define it to ensure proper error handling in case of appearance.
-    re_flags: Dict[SigmaRegularExpressionFlag, str] = (
-        SigmaRegularExpression.sigma_to_re_flag.update(
-            {
-                SigmaRegularExpressionFlag.IGNORECASE: json.dumps(
-                    {"case_insensitive": "true"}
-                )
-            }
-        )
-    )
+    re_flags: Dict[SigmaRegularExpressionFlag, str] = {
+        SigmaRegularExpressionFlag.IGNORECASE: {"case_insensitive": "true"}
+    }
 
     # Case sensitive string matching expression. String is quoted/escaped like a normal string.
     # Placeholders {field} and {value} are replaced with field name and quoted/escaped string.
@@ -476,33 +470,30 @@ class DSLBackend(JSONQueryBackend):
 
     def convert_condition_and(self, cond: ConditionAND, state: ConversionState) -> Any:
         """Conversion of AND conditions."""
-        andNode = {"bool": {"must": []}}
-
+        and_node = {"bool": {"must": []}}
         for arg in cond.args:
             try:
                 value = self.convert_condition(arg, state)
-                if isinstance(value, str):
-                    value = json.loads(value)
-                andNode["bool"]["must"].append(value)
+                and_node["bool"]["must"].append(value)
 
             except Exception as ex:  # pragma: no cover
                 raise (f"Operator 'and' not supported by the backend {ex}")
         # and_str = json.dumps(andNode)
-        return andNode
+        return and_node
 
     def convert_condition_not(self, cond: ConditionNOT, state: ConversionState) -> Any:
         """Conversion of NOT conditions."""
-        notNode = {"bool": {"must_not": []}}
+        not_node = {"bool": {"must_not": []}}
         try:
             for arg in cond.args:
                 value = self.convert_condition(arg, state)
                 if isinstance(value, str):
                     value = json.loads(value)
-                notNode["bool"]["must_not"].append(value)
+                not_node["bool"]["must_not"].append(value)
 
         except Exception as ex:  # pragma: no cover
             raise (f"Operator 'and' not supported by the backend {ex}")
-        return notNode
+        return not_node
 
     def convert_correlation_search(
         self,
@@ -539,30 +530,9 @@ class DSLBackend(JSONQueryBackend):
     ) -> Union[str, DeferredQueryExpression]:
         """Conversion of field in value list conditions."""
 
-        # if any Search value contains Wildcards, use specific regexp search
-        if all(isinstance(arg.value, SigmaString) for arg in cond.args) and any(
-            arg.value.contains_special() for arg in cond.args
-        ):
-            inNode = {"bool": {"should": []}}
-            or_nodes = []
-            for arg in cond.args:
-                or_nodes.append(
-                    {
-                        "regexp": {
-                            self.escape_and_quote_field(arg.field): {
-                                # "value": re.escape(self.convert_value_str(arg.value, state)),
-                                "value": self.convert_value_str(arg.value, state),
-                                "case_insensitive": self.field_needs_case_insensitive_search(
-                                    arg.field
-                                ),
-                            }
-                        }
-                    }
-                )
-            inNode["bool"]["should"] = or_nodes
-            return inNode
-        else:
-            inNode = {
+        # if all strings are case-sensitive, terms queries can be grouped.
+        if all(isinstance(arg.value, SigmaCasedString) for arg in cond.args):
+            in_node = {
                 "terms": {self.escape_and_quote_field(cond.args[0].field): []}
             }  # The assumption that the field is the same for all argument is valid because this is checked before
             for arg in cond.args:
@@ -574,42 +544,47 @@ class DSLBackend(JSONQueryBackend):
                 elif "ip" in arg.field.lower():
                     to_append = str(arg.value)  # TODO !!!!
 
-                inNode["terms"][self.escape_and_quote_field(cond.args[0].field)].append(
-                    to_append
+                in_node["terms"][
+                    self.escape_and_quote_field(cond.args[0].field)
+                ].append(to_append)
+            return in_node
+        else:  # if any value shall be case-INsensitive, then the values can not be searched together with 'terms' query
+            in_node = {"bool": {"should": []}}
+            or_nodes = []
+            for arg in cond.args:
+                or_nodes.append(
+                    self.convert_condition_field_eq_val_str(cond=arg, state=state)
                 )
-            return inNode
+            in_node["bool"]["should"] = or_nodes
+            return in_node
 
     def convert_condition_or(self, cond: ConditionOR, state: ConversionState) -> Any:
         """Conversion of OR conditions."""
-        orNode = {"bool": {"should": []}}
+        or_node = {"bool": {"should": []}}
         try:
             for arg in cond.args:
                 value = self.convert_condition(arg, state)
-                if isinstance(value, str):
-                    value = json.loads(value)
-                orNode["bool"]["should"].append(value)
+                or_node["bool"]["should"].append(value)
 
         except Exception as ex:  # pragma: no cover
             raise (f"Operator 'and' not supported by the backend {ex}")
-        return orNode
+        return or_node
 
     def convert_condition_field_eq_val_re(
         self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
     ) -> Union[str, DeferredQueryExpression]:
         """Conversion of field matches regular expression value expressions."""
-        regexNode = {}
-        flag_kwargs = self.get_flag_template(cond.value)
-        regexNode.update(
-            {
-                "regexp": {
-                    cond.field: {
-                        "value": self.convert_value_re(cond.value, state),
-                        "case_insensitive": True,
-                    }
+        value = cond.value
+        regex_node = {
+            "regexp": {
+                cond.field: {
+                    "value": self.convert_value_re(value, state),
                 }
             }
-        )
-        return regexNode
+        }
+        if not (isinstance(value, SigmaCasedString)):
+            regex_node["regexp"][cond.field].update({"case_insensitive": "true"})
+        return regex_node
 
     def field_needs_case_insensitive_search(self, field):
         if (
@@ -636,6 +611,153 @@ class DSLBackend(JSONQueryBackend):
     ) -> Any:
         """Conversion of value-only strings."""
         return str(cond.value)
+
+    def convert_condition_field_eq_val_str_case_sensitive(
+        self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
+    ) -> Union[str, DeferredQueryExpression]:
+        """Conversion of case-sensitive field = string value expressions"""
+        try:
+            if (  # Check conditions for usage of 'startswith' operator
+                cond.value.endswith(
+                    SpecialChars.WILDCARD_MULTI
+                )  # String ends with wildcard
+                and not cond.value[
+                    :-1
+                ].contains_special()  # Remainder of string doesn't contains special characters
+            ):
+                value = cond.value[:-1]
+                expr = {
+                    "regexp": {
+                        self.escape_and_quote_field(cond.field): {
+                            "value": self.convert_value_str(value, state)
+                            + self.wildcard_multi,
+                            "case_insensitive": "false",
+                        }
+                    }
+                }  # If all conditions are fulfilled, use 'startswith' operartor instead of equal token
+            elif (  # Same as above but for 'endswith' operator: string starts with wildcard and doesn't contains further special characters
+                cond.value.startswith(SpecialChars.WILDCARD_MULTI)
+                and not cond.value[1:].contains_special()
+            ):
+                value = cond.value[1:]
+                expr = {
+                    "regexp": {
+                        self.escape_and_quote_field(cond.field): {
+                            "value": self.wildcard_multi
+                            + self.convert_value_str(value, state),
+                            "case_insensitive": "false",
+                        }
+                    }
+                }
+            elif (  # contains: string starts and ends with wildcard
+                cond.value.startswith(SpecialChars.WILDCARD_MULTI)
+                and cond.value.endswith(SpecialChars.WILDCARD_MULTI)
+                and not cond.value[1:-1].contains_special()
+            ):
+                value = cond.value[1:-1]
+                expr = {
+                    "regexp": {
+                        self.escape_and_quote_field(cond.field): {
+                            "value": self.wildcard_multi
+                            + self.convert_value_str(value, state)
+                            + self.wildcard_multi,
+                            "case_insensitive": "false",
+                        }
+                    }
+                }
+            else:
+                value = cond.value
+                original_value = value.original
+                expr = {
+                    "term": {self.escape_and_quote_field(cond.field): original_value}
+                }  # is case sensitive by default
+            return expr
+        except TypeError:  # pragma: no cover
+            raise NotImplementedError(
+                "Case-sensitive field equals string value expressions with strings are not supported by the backend."
+            )
+
+    def convert_condition_field_eq_val_str(
+        self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
+    ) -> Union[str, DeferredQueryExpression]:
+        """Conversion of field = string value expressions"""
+        try:
+            if (  # Check conditions for usage of 'startswith' operator
+                cond.value.endswith(
+                    SpecialChars.WILDCARD_MULTI
+                )  # String ends with wildcard
+                and not cond.value[
+                    :-1
+                ].contains_special()  # Remainder of string doesn't contains special characters
+            ):
+                value = cond.value[:-1]
+                expr = {
+                    "regexp": {
+                        self.escape_and_quote_field(cond.field): {
+                            "value": self.convert_value_str(value, state)
+                            + self.wildcard_multi,
+                            "case_insensitive": "true",
+                        }
+                    }
+                }  # If all conditions are fulfilled, use 'startswith' operartor instead of equal token
+            elif (  # Same as above but for 'endswith' operator: string starts with wildcard and doesn't contains further special characters
+                cond.value.startswith(SpecialChars.WILDCARD_MULTI)
+                and not cond.value[1:].contains_special()
+            ):
+                value = cond.value[1:]
+                expr = {
+                    "regexp": {
+                        self.escape_and_quote_field(cond.field): {
+                            "value": self.wildcard_multi
+                            + self.convert_value_str(value, state),
+                            "case_insensitive": "true",
+                        }
+                    }
+                }
+            elif (  # contains: string starts and ends with wildcard
+                cond.value.startswith(SpecialChars.WILDCARD_MULTI)
+                and cond.value.endswith(SpecialChars.WILDCARD_MULTI)
+                and not cond.value[1:-1].contains_special()
+            ):
+                value = cond.value[1:-1]
+                expr = {
+                    "regexp": {
+                        self.escape_and_quote_field(cond.field): {
+                            "value": self.wildcard_multi
+                            + self.convert_value_str(value, state)
+                            + self.wildcard_multi,
+                            "case_insensitive": "true",
+                        }
+                    }
+                }
+            elif (  # wildcard match expression: string contains wildcard
+                cond.value.contains_special()
+            ):
+                value = cond.value
+                expr = {
+                    "regexp": {
+                        self.escape_and_quote_field(cond.field): {
+                            "value": self.convert_value_str(value, state),
+                            "case_insensitive": "true",
+                        }
+                    },
+                }
+            else:  # equals --> exact match but case insensitive (Works on Keyword fields with Elastic >= 7.10)
+                value = cond.value
+                original_value = value.original
+                expr = {
+                    "term": {
+                        self.escape_and_quote_field(cond.field): {
+                            "value": original_value,
+                            "case_insensitive": "true",
+                        }
+                    }
+                }
+            return expr
+        except TypeError:  # pragma: no cover
+            raise NotImplementedError(
+                "Field equals string value expressions with strings are not supported by the backend."
+            )
 
     def finalize_query_default(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
@@ -673,13 +795,13 @@ class DSLBackend(JSONQueryBackend):
             field_to_agg_by = None
 
         grouped_name = field_to_agg_by.replace(".", "_")
-        if rule.condition.fieldref:
+        if correlation_type == "value_count" and rule.condition.fieldref:
             agg_func = "cardinality"
-            agg_field = field_to_agg_by
+            agg_field = rule.condition.fieldref
             agg_name = f"card({field_to_agg_by.replace('.', '_')})"
         else:
             agg_func = "value_count"
-            agg_field = rule.condition.fieldref
+            agg_field = field_to_agg_by
             agg_name = f"count({grouped_name})"
         script_limit = f"params.count {self.correlation_condition_mapping.get(rule.condition.op)} {rule.condition.count}"
         query = self.convert_correlation_search(rule)
@@ -701,3 +823,89 @@ class DSLBackend(JSONQueryBackend):
             }
         }
         return [query]
+
+    # Implementation of the search phase of the correlation query.
+    def convert_correlation_search(
+        self,
+        rule: SigmaCorrelationRule,
+        **kwargs,
+    ) -> str:
+        if (  # if the correlation rule refers only a single rule and this rule results only in a single query
+            len(rule.rules) == 1
+            and len(
+                queries := (
+                    rule_reference := rule.rules[0].rule
+                ).get_conversion_result()
+            )
+            == 1
+            and self.correlation_search_single_rule_expression is not None
+        ):
+            return queries[0]
+        else:
+            return self.correlation_search_multi_rule_expression.format(
+                queries=self.correlation_search_multi_rule_query_expression_joiner.join(
+                    (
+                        self.correlation_search_multi_rule_query_expression.format(
+                            rule=rule_reference.rule,
+                            ruleid=rule_reference.rule.name or rule_reference.rule.id,
+                            query=self.convert_correlation_search_multi_rule_query_postprocess(
+                                query
+                            ),
+                            normalization=self.convert_correlation_search_field_normalization_expression(
+                                rule.aliases,
+                                rule_reference,
+                            ),
+                        )
+                        for rule_reference in rule.rules
+                        for query in rule_reference.rule.get_conversion_result()
+                    )
+                ),
+                **kwargs,
+            )
+
+    def finalize_query(
+        self,
+        rule: SigmaRule,
+        query: Union[str, DeferredQueryExpression],
+        index: int,
+        state: ConversionState,
+        output_format: str,
+    ) -> Union[str, DeferredQueryExpression]:
+        """
+        Finalize query by appending deferred query parts to the main conversion result as specified
+        with deferred_start and deferred_separator.
+        """
+        # TODO when Python 3.8 is dropped: replace ChainMap with | operator.
+        conversion_state = ChainMap(state.processing_state, self.state_defaults)
+
+        if state.has_deferred():
+            if isinstance(query, DeferredQueryExpression):
+                query = self.deferred_only_query
+            return super().finalize_query(
+                rule,
+                self.query_expression.format(
+                    query=query,
+                    rule=rule,
+                    state=conversion_state,
+                )
+                + self.deferred_start
+                + self.deferred_separator.join(
+                    (
+                        deferred_expression.finalize_expression()
+                        for deferred_expression in state.deferred
+                    )
+                ),
+                index,
+                state,
+                output_format,
+            )
+        else:
+            # use 'Backend' base class, not 'TextQueryBackend'
+            res = super(TextQueryBackend, self).finalize_query(
+                rule,
+                query,
+                index,
+                state,
+                output_format,
+            )
+            return res
