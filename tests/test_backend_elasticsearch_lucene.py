@@ -1,6 +1,7 @@
 import pytest
 from sigma.backends.elasticsearch.elasticsearch_lucene import LuceneBackend
 from sigma.collection import SigmaCollection
+from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
 
 
 @pytest.fixture(name="lucene_backend")
@@ -415,6 +416,25 @@ def test_lucene_angle_brackets(lucene_backend: LuceneBackend):
     ]
 
 
+def test_lucene_keyword_quotation(lucene_backend: LuceneBackend):
+    """Test for DSL output with < or > in the values"""
+    rule = SigmaCollection.from_yaml(
+        r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                keywords:
+                    - 'Failed to generate curve25519 keys'
+                condition: keywords
+        """
+    )
+
+    assert lucene_backend.convert(rule) == [r"*Failed\ to\ generate\ curve25519\ keys*"]
+
+
 def test_lucene_windash(lucene_backend: LuceneBackend):
     """Test for DSL output using windash modifier"""
     assert (
@@ -459,6 +479,28 @@ def test_lucene_windash_contains(lucene_backend: LuceneBackend):
         )
         == ["fieldname:(*\\ \\-param\\-name\\ * OR *\\ \\/param\\-name\\ *)"]
     )
+
+
+def test_lucene_reference_query(lucene_backend: LuceneBackend):
+    with pytest.raises(
+        SigmaFeatureNotSupportedByBackendError,
+        match="ES Lucene backend can't handle field references.",
+    ):
+        lucene_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    sel:
+                        fieldA|fieldref: somefield
+                    condition: sel
+            """
+            )
+        )
 
 
 def test_elasticsearch_ndjson_lucene(lucene_backend: LuceneBackend):
