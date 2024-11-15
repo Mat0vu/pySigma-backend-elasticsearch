@@ -144,6 +144,9 @@ Use this pipeline with: `-t lucene -p lucene-kibana-siemrule.yml` but now withou
 ### ESQL siem_rule_ndjson
 ```yaml
 vars:
+  index_names: 
+    - "filebeat-*"
+    - "logs-*"
   schedule_interval: 5
   schedule_interval_unit: m
 postprocessing:
@@ -171,7 +174,7 @@ postprocessing:
           "from": "1m"
         },
         "risk_score": rule.custom_attributes.risk_score,
-        "severity": rule.level.name | string | lower if rule.level is not none else 'low',
+        "severity": rule.level.name | string | lower if rule.level is not none else "low",
         "threat": rule.custom_attributes.threat,
         "severity_mapping": [],
         "to": "now",
