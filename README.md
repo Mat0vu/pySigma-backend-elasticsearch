@@ -157,8 +157,8 @@ postprocessing:
       {%- set rule_data = {
         "name": rule.title,
         "id": rule.id | lower,
-        "author": [rule.author] if rule.author is string else rule.author,
-        "description": rule.description,
+        "author": [rule.author] if rule.author is string else rule.author or "",
+        "description": rule.description if rule.description else "empty description",
         "references": rule.references,
         "enabled": true,
         "interval": pipeline.vars.schedule_interval|string ~ pipeline.vars.schedule_interval_unit,
@@ -170,10 +170,10 @@ postprocessing:
         "meta": {
           "from": "1m"
         },
-        "risk_score": backend.severity_risk_mapping[rule.level.name] if rule.level is not none else 21, 
-        "severity": rule.level.name | string | lower if rule.level is not none else "low",
+        "risk_score": rule.custom_attributes.risk_score,
+        "severity": rule.level.name | string | lower if rule.level is not none else 'low',
+        "threat": rule.custom_attributes.threat,
         "severity_mapping": [],
-        "threat": backend.finalize_output_threat_model(rule.tags) | list,
         "to": "now",
         "version": 1,
         "max_signals": 100,
