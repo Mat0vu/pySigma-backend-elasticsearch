@@ -3,7 +3,7 @@ from sigma.conversion.state import ConversionState
 from sigma.rule import SigmaRule, SigmaRuleTag
 from sigma.conversion.base import TextQueryBackend
 from sigma.conditions import ConditionItem, ConditionAND, ConditionOR, ConditionNOT
-from sigma.types import SigmaCompareExpression, CompareOperators
+from sigma.types import CompareOperators
 from sigma.data.mitre_attack import mitre_attack_tactics, mitre_attack_techniques
 import sigma
 import re
