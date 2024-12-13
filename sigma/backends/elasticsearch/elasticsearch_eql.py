@@ -14,12 +14,12 @@ from sigma.conditions import (
     ConditionFieldEqualsValueExpression,
 )
 from sigma.types import (
+    CompareOperators,
     SigmaCompareExpression,
     SigmaNull,
     SigmaFieldReference,
     SpecialChars,
     SigmaNumber,
-    CompareOperators
 )
 from sigma.data.mitre_attack import mitre_attack_tactics, mitre_attack_techniques
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
@@ -149,9 +149,57 @@ class EqlBackend(TextQueryBackend):
     # List element separator
     list_separator: ClassVar[str] = ", "
 
+    # Correlations
+    correlation_methods: ClassVar[Dict[str, str]] = {
+        "sequence": "Ordered Sequence",
+        "sample": "Unordered Sequence",
+    }
+
+    default_correlation_method: ClassVar[str] = "sequence"
+
+    correlation_search_single_rule_expression: ClassVar[str] = "any where {query}"
+    correlation_search_multi_rule_expression: ClassVar[str] = "{queries}"
+    correlation_search_multi_rule_query_expression: ClassVar[str] = "{query}"
+    correlation_search_multi_rule_query_expression_joiner: ClassVar[str] = " \n "
+
+    default_correlation_query: ClassVar[str] = {
+        "sequence": "sequence \n [{search}] {aggregate} {condition}",
+        "sample": "sample {condition} \n [{search}] {aggregate}",
+    }
+
+    value_count_condition_expression: ClassVar[Dict[str, str]] = {
+        "sequence": "with runs={count}"
+    }
+    value_count_aggregation_expression: ClassVar[Dict[str, str]] = {
+        "sequence": "by {field}"
+    }
+    temporal_aggregation_expression: ClassVar[Dict[str, str]] = {
+        "sequence": "by {groupby}"
+    }
+    temporal_ordered_aggregation_expression: ClassVar[Dict[str, str]] = {
+        "sequence": "{groupby}"
+    }
+    temporal_condition_expression: ClassVar[Dict[str, str]] = {
+        "sequence": "where event_type_count {op} {count}"
+    }
+    event_count_aggregation_expression: ClassVar[Dict[str, str]] = {"sequence": ""}
+    event_count_condition_expression: ClassVar[Dict[str, str]] = {
+        "sequence": "with runs={count}"
+    }
+    temporal_condition_expression: ClassVar[Dict[str, str]] = {
+        "sequence": "with runs={count}"
+    }
+    temporal_ordered_condition_expression: ClassVar[Dict[str, str]] = {
+        "sequence": "with runs={count}"
+    }
+    groupby_expression_nofield: ClassVar = {"sequence": ""}
+    groupby_expression: ClassVar[Dict[str, str]] = {"sequence": "by {fields}"}
+    groupby_field_expression: ClassVar[Dict[str, str]] = {"sequence": "{field},"}
+    groupby_field_expression_joiner: ClassVar[Dict[str, str]] = {"sequence": ""}
+
     # Value not bound to a field
     # Expression for string value not bound to a field as format string with placeholder {value}
-    unbound_value_str_expression: ClassVar[str] = '{value}'
+    unbound_value_str_expression: ClassVar[str] = "{value}"
     # Expression for number value not bound to a field as format string with placeholder {value}
     unbound_value_num_expression: ClassVar[str] = "{value}"
 
@@ -277,13 +325,31 @@ class EqlBackend(TextQueryBackend):
 
         return super().compare_precedence(outer, inner)
 
+    def finalize_query(
+        self,
+        rule: SigmaRule,
+        query: Union[str, DeferredQueryExpression],
+        index: int,
+        state: ConversionState,
+        output_format: str,
+    ) -> Union[str, DeferredQueryExpression]:
+        # Save the processed index back to the processing state
+        index_state = state.processing_state.get("index")
+        if not index_state:
+            index_state = self.index_names
+        if not isinstance(index_state, list):
+            index_state = [index_state]
+        # Save the processed index back to the processing state
+        state.processing_state["index"] = index_state
+        return super().finalize_query(rule, query, index, state, output_format)
+
     def finalize_query_default(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
     ) -> Any:
         # TODO: implement the per-query output for the output format {{ format }} here. Usually, the generated query is
         # embedded into a template, e.g. a JSON format with additional information from the Sigma rule.
         # TODO: proper type annotation.
-        return f"any where {query}"
+        return f"{query}"
 
     def finalize_output_default(self, queries: List[str]) -> Any:
         # TODO: implement the output finalization for all generated queries for the format {{ format }} here. Usually,
