@@ -296,6 +296,82 @@ def test_elasticsearch_esql_set_state_index_list(esql_backend: ESQLBackend):
     )
 
 
+def test_elasticsearch_esql_set_state_index_list_correlation_rule(
+    esql_backend: ESQLBackend,
+):
+    assert (
+        ESQLBackend(
+            processing_pipeline=ProcessingPipeline.from_yaml(
+                """
+                name: test
+                priority: 30
+                transformations:
+                  - id: set_state_index
+                    type: set_state
+                    key: index
+                    val:
+                      - logs-test1-*
+                      - logs-test2-*
+                    rule_conditions:
+                      - type: logsource
+                        category: test_category
+                        product: test_product
+                  - id: Index Mapping Proxy
+                    type: set_state
+                    key: index
+                    val: 
+                      - "logs-different-source*"
+                    rule_conditions:
+                    - type: logsource
+                      category: other_log_source
+        """
+            )
+        ).convert(
+            SigmaCollection.from_yaml(
+            """
+title: Correlation_Test
+correlation:
+  type: value_count
+  rules:
+    - rule_for_one_log_source
+    - rule_for_other_source
+  group-by:
+    - field
+  timespan: 15m
+  condition:
+    field: User
+    gt: 35
+---
+title: Test
+status: test
+name: rule_for_one_log_source
+logsource:
+  category: test_category
+  product: test_product
+detection:
+  sel:
+    fieldA: valueA
+    fieldB: valueB
+  condition: sel
+---
+title: Temp_Test
+id: dcb9bf7c-216b-4a22-80a2-1232284cda19
+name: rule_for_other_source
+logsource:
+  category: other_log_source
+detection:
+  selection:
+    EventID: test
+  condition: selection
+        """
+            )
+        )
+        == [
+            'from logs-test1-*,logs-test2-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+        ]
+    )
+
+
 def test_elasticsearch_esql_set_state_index_list_single(esql_backend: ESQLBackend):
     assert (
         ESQLBackend(
