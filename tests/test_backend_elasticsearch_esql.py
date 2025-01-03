@@ -3,6 +3,7 @@ from sigma.collection import SigmaCollection
 from sigma.backends.elasticsearch.elasticsearch_esql import ESQLBackend
 from sigma.processing.pipeline import ProcessingPipeline
 
+
 @pytest.fixture
 def esql_backend():
     return ESQLBackend()
@@ -26,7 +27,9 @@ def test_elasticsearch_esql_and_expression(esql_backend: ESQLBackend):
         """
             )
         )
-        == ['from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"']
+        == [
+            'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+        ]
     )
 
 
@@ -49,7 +52,9 @@ def test_elasticsearch_esql_or_expression(esql_backend: ESQLBackend):
         """
             )
         )
-        == ['from * metadata _id, _index, _version | where fieldA=="valueA" or fieldB=="valueB"']
+        == [
+            'from * metadata _id, _index, _version | where fieldA=="valueA" or fieldB=="valueB"'
+        ]
     )
 
 
@@ -128,11 +133,15 @@ def test_elasticsearch_esql_in_expression(esql_backend: ESQLBackend):
         """
             )
         )
-        == ['from * metadata _id, _index, _version | where fieldA in ("valueA", "valueB", "valueC")']
+        == [
+            'from * metadata _id, _index, _version | where fieldA in ("valueA", "valueB", "valueC")'
+        ]
     )
 
 
-def test_elasticsearch_esql_wildcard_expressions(esql_backend: ESQLBackend):
+def test_elasticsearch_esql_wildcard_expressions_case_insensitive(
+    esql_backend: ESQLBackend,
+):
     assert (
         esql_backend.convert(
             SigmaCollection.from_yaml(
@@ -145,6 +154,34 @@ def test_elasticsearch_esql_wildcard_expressions(esql_backend: ESQLBackend):
             detection:
                 sel:
                     fieldA:
+                        - "val*A"
+                        - "*valueB"
+                        - "valueC*"
+                condition: sel
+        """
+            )
+        )
+        == [
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA) like "val*A" or ends_with(TO_LOWER(fieldA), "valueB") or starts_with(TO_LOWER(fieldA), "valueC")'
+        ]
+    )
+
+
+def test_elasticsearch_esql_wildcard_expressions_case_sensitive(
+    esql_backend: ESQLBackend,
+):
+    assert (
+        esql_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA|cased:
                         - "val*A"
                         - "*valueB"
                         - "valueC*"
@@ -176,7 +213,9 @@ def test_elasticsearch_esql_regex_query(esql_backend: ESQLBackend):
         """
             )
         )
-        == ['from * metadata _id, _index, _version | where fieldA rlike "foo.*bar" and fieldB=="foo"']
+        == [
+            'from * metadata _id, _index, _version | where fieldA rlike "foo.*bar" and fieldB=="foo"'
+        ]
     )
 
 
@@ -197,7 +236,9 @@ def test_elasticsearch_esql_cidr_query(esql_backend: ESQLBackend):
         """
             )
         )
-        == ['from * metadata _id, _index, _version | where cidr_match(field, "192.168.0.0/16")']
+        == [
+            'from * metadata _id, _index, _version | where cidr_match(field, "192.168.0.0/16")'
+        ]
     )
 
 
@@ -221,6 +262,7 @@ def test_elasticsearch_esql_field_name_with_whitespace(esql_backend: ESQLBackend
         == ['from * metadata _id, _index, _version | where `field name`=="value"']
     )
 
+
 def test_elasticsearch_esql_set_state_index_string(esql_backend: ESQLBackend):
     assert (
         ESQLBackend(
@@ -238,7 +280,8 @@ def test_elasticsearch_esql_set_state_index_string(esql_backend: ESQLBackend):
                         category: test_category
                         product: test_product
         """
-        )).convert(
+            )
+        ).convert(
             SigmaCollection.from_yaml(
                 """
             title: Test
@@ -254,8 +297,11 @@ def test_elasticsearch_esql_set_state_index_string(esql_backend: ESQLBackend):
         """
             )
         )
-        == ['from logs-test-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"']
+        == [
+            'from logs-test-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+        ]
     )
+
 
 def test_elasticsearch_esql_set_state_index_list(esql_backend: ESQLBackend):
     assert (
@@ -276,7 +322,8 @@ def test_elasticsearch_esql_set_state_index_list(esql_backend: ESQLBackend):
                         category: test_category
                         product: test_product
         """
-        )).convert(
+            )
+        ).convert(
             SigmaCollection.from_yaml(
                 """
             title: Test
@@ -292,7 +339,9 @@ def test_elasticsearch_esql_set_state_index_list(esql_backend: ESQLBackend):
         """
             )
         )
-        == ['from logs-test1-*,logs-test2-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"']
+        == [
+            'from logs-test1-*,logs-test2-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+        ]
     )
 
 
@@ -314,7 +363,8 @@ def test_elasticsearch_esql_set_state_index_list_single(esql_backend: ESQLBacken
                         category: test_category
                         product: test_product
         """
-        )).convert(
+            )
+        ).convert(
             SigmaCollection.from_yaml(
                 """
             title: Test
@@ -330,8 +380,11 @@ def test_elasticsearch_esql_set_state_index_list_single(esql_backend: ESQLBacken
         """
             )
         )
-        == ['from logs-test-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"']
+        == [
+            'from logs-test-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+        ]
     )
+
 
 def test_elasticsearch_esql_set_state_index_list_deduplicate(esql_backend: ESQLBackend):
     assert (
@@ -352,7 +405,8 @@ def test_elasticsearch_esql_set_state_index_list_deduplicate(esql_backend: ESQLB
                         category: test_category
                         product: test_product
         """
-        )).convert(
+            )
+        ).convert(
             SigmaCollection.from_yaml(
                 """
             title: Test
@@ -368,8 +422,11 @@ def test_elasticsearch_esql_set_state_index_list_deduplicate(esql_backend: ESQLB
         """
             )
         )
-        == ['from logs-test-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"']
+        == [
+            'from logs-test-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+        ]
     )
+
 
 def test_elasticsearch_esql_set_state_index_list_wildcard(esql_backend: ESQLBackend):
     assert (
@@ -390,7 +447,8 @@ def test_elasticsearch_esql_set_state_index_list_wildcard(esql_backend: ESQLBack
                         category: test_category
                         product: test_product
         """
-        )).convert(
+            )
+        ).convert(
             SigmaCollection.from_yaml(
                 """
             title: Test
@@ -406,8 +464,11 @@ def test_elasticsearch_esql_set_state_index_list_wildcard(esql_backend: ESQLBack
         """
             )
         )
-        == ['from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"']
+        == [
+            'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+        ]
     )
+
 
 def test_elasticsearch_esql_ndjson(esql_backend: ESQLBackend):
     """Test for NDJSON output with embedded query string query."""
@@ -427,25 +488,25 @@ def test_elasticsearch_esql_ndjson(esql_backend: ESQLBackend):
     )
     result = esql_backend.convert(rule, output_format="kibana_ndjson")
     assert result[0] == {
-        'attributes': {
-            'columns': [],
-            'description': 'No description',
-            'grid': {},
-            'hideChart': False,
-            'isTextBasedQuery': True,
-            'kibanaSavedObjectMeta': {
-                'searchSourceJSON': '{"query": {"esql": "from * metadata _id, _index, _version | where fieldA==\\"valueA\\" and fieldB==\\"valueB\\""}, "index": {"title": "*", "timeFieldName": "@timestamp", "sourceFilters": [], "type": "esql", "fieldFormats": {}, "runtimeFieldMap": {}, "allowNoIndex": false, "name": "*", "allowHidden": false}, "filter": []}'
+        "attributes": {
+            "columns": [],
+            "description": "No description",
+            "grid": {},
+            "hideChart": False,
+            "isTextBasedQuery": True,
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": '{"query": {"esql": "from * metadata _id, _index, _version | where fieldA==\\"valueA\\" and fieldB==\\"valueB\\""}, "index": {"title": "*", "timeFieldName": "@timestamp", "sourceFilters": [], "type": "esql", "fieldFormats": {}, "runtimeFieldMap": {}, "allowNoIndex": false, "name": "*", "allowHidden": false}, "filter": []}'
             },
-            'sort': [['@timestamp', 'desc']],
-            'timeRestore': False,
-            'title': 'SIGMA - Test',
-            'usesAdHocDataView': False
+            "sort": [["@timestamp", "desc"]],
+            "timeRestore": False,
+            "title": "SIGMA - Test",
+            "usesAdHocDataView": False,
         },
-        'id': 'None',
-        'managed': False,
-        'references': [],
-        'type': 'search',
-        'typeMigrationVersion': '10.2.0'
+        "id": "None",
+        "managed": False,
+        "references": [],
+        "type": "search",
+        "typeMigrationVersion": "10.2.0",
     }
 
 
@@ -468,46 +529,42 @@ def test_elasticsearch_esql_siemrule(esql_backend: ESQLBackend):
     )
     result = esql_backend.convert(rule, output_format="siem_rule")
     assert result[0] == {
-        'name': 'SIGMA - Test',
-        'tags': [],
-        'enabled': True,
-        'consumer': 'siem',
-        'throttle': None,
-        'schedule': {
-            'interval': '5m'
+        "name": "SIGMA - Test",
+        "tags": [],
+        "enabled": True,
+        "consumer": "siem",
+        "throttle": None,
+        "schedule": {"interval": "5m"},
+        "params": {
+            "author": [],
+            "description": "No description",
+            "ruleId": "c277adc0-f0c4-42e1-af9d-fab062992156",
+            "falsePositives": [],
+            "from": "now-5m",
+            "immutable": False,
+            "license": "DRL",
+            "outputIndex": "",
+            "meta": {"from": "1m"},
+            "maxSignals": 100,
+            "relatedIntegrations": [],
+            "requiredFields": [],
+            "riskScore": 21,
+            "riskScoreMapping": [],
+            "setup": "",
+            "severity": "low",
+            "severityMapping": [],
+            "threat": [],
+            "to": "now",
+            "references": [],
+            "version": 1,
+            "exceptionsList": [],
+            "type": "esql",
+            "language": "esql",
+            "query": 'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"',
         },
-        'params': {
-            'author': [],
-            'description': 'No description',
-            'ruleId': 'c277adc0-f0c4-42e1-af9d-fab062992156',
-            'falsePositives': [],
-            'from': 'now-5m',
-            'immutable': False,
-            'license': 'DRL',
-            'outputIndex': '',
-            'meta': {
-                'from': '1m'
-            },
-            'maxSignals': 100,
-            'relatedIntegrations': [],
-            'requiredFields': [],
-            'riskScore': 21,
-            'riskScoreMapping': [],
-            'setup': '',
-            'severity': 'low',
-            'severityMapping': [],
-            'threat': [],
-            'to': 'now',
-            'references': [],
-            'version': 1,
-            'exceptionsList': [],
-            'type': 'esql',
-            'language': 'esql',
-            'query': 'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
-        },
-        'rule_type_id': 'siem.esqlRule',
-        'notify_when': 'onActiveAlert',
-        'actions': []
+        "rule_type_id": "siem.esqlRule",
+        "notify_when": "onActiveAlert",
+        "actions": [],
     }
 
 
@@ -530,40 +587,38 @@ def test_elasticsearch_esql_siemrule_ndjson(esql_backend: ESQLBackend):
     )
     result = esql_backend.convert(rule, output_format="siem_rule_ndjson")
     assert result[0] == {
-        'id': 'c277adc0-f0c4-42e1-af9d-fab062992156',
-        'name': 'SIGMA - Test',
-        'tags': [],
-        'interval': '5m',
-        'enabled': True,
-        'description': 'No description',
-        'risk_score': 21,
-        'severity': 'low',
-        'note': '',
-        'license': 'DRL',
-        'output_index': '',
-        'meta': {
-            'from': '1m'
-        },
-        'author': [],
-        'false_positives': [],
-        'from': 'now-5m',
-        'rule_id': 'c277adc0-f0c4-42e1-af9d-fab062992156',
-        'max_signals': 100,
-        'risk_score_mapping': [],
-        'severity_mapping': [],
-        'threat': [],
-        'to': 'now',
-        'references': [],
-        'version': 1,
-        'exceptions_list': [],
-        'immutable': False,
-        'related_integrations': [],
-        'required_fields': [],
-        'setup': '',
-        'type': 'esql',
-        'language': 'esql',
-        'query': 'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"',
-        'actions': []
+        "id": "c277adc0-f0c4-42e1-af9d-fab062992156",
+        "name": "SIGMA - Test",
+        "tags": [],
+        "interval": "5m",
+        "enabled": True,
+        "description": "No description",
+        "risk_score": 21,
+        "severity": "low",
+        "note": "",
+        "license": "DRL",
+        "output_index": "",
+        "meta": {"from": "1m"},
+        "author": [],
+        "false_positives": [],
+        "from": "now-5m",
+        "rule_id": "c277adc0-f0c4-42e1-af9d-fab062992156",
+        "max_signals": 100,
+        "risk_score_mapping": [],
+        "severity_mapping": [],
+        "threat": [],
+        "to": "now",
+        "references": [],
+        "version": 1,
+        "exceptions_list": [],
+        "immutable": False,
+        "related_integrations": [],
+        "required_fields": [],
+        "setup": "",
+        "type": "esql",
+        "language": "esql",
+        "query": 'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"',
+        "actions": [],
     }
 
 
@@ -593,7 +648,12 @@ def test_elasticsearch_esql_siemrule_ndjson_with_threat(esql_backend: ESQLBacken
     assert result[0] == {
         "id": "c277adc0-f0c4-42e1-af9d-fab062992156",
         "name": "SIGMA - Test",
-        "tags": ["attack-execution", "attack-t1059.001", "attack-defense_evasion", "attack-t1027"],
+        "tags": [
+            "attack-execution",
+            "attack-t1059.001",
+            "attack-defense_evasion",
+            "attack-t1027",
+        ],
         "interval": "5m",
         "enabled": True,
         "description": "No description",
@@ -602,9 +662,7 @@ def test_elasticsearch_esql_siemrule_ndjson_with_threat(esql_backend: ESQLBacken
         "note": "",
         "license": "DRL",
         "output_index": "",
-        "meta": {
-            "from": "1m"
-        },
+        "meta": {"from": "1m"},
         "author": [],
         "false_positives": [],
         "from": "now-5m",

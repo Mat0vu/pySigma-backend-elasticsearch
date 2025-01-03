@@ -2,8 +2,14 @@ from sigma.conversion.deferred import DeferredQueryExpression
 from sigma.conversion.state import ConversionState
 from sigma.rule import SigmaRule, SigmaRuleTag
 from sigma.conversion.base import TextQueryBackend
-from sigma.conditions import ConditionItem, ConditionAND, ConditionOR, ConditionNOT
-from sigma.types import CompareOperators
+from sigma.conditions import (
+    ConditionItem,
+    ConditionAND,
+    ConditionOR,
+    ConditionNOT,
+    ConditionFieldEqualsValueExpression,
+)
+from sigma.types import CompareOperators, SpecialChars
 from sigma.data.mitre_attack import mitre_attack_tactics, mitre_attack_techniques
 import sigma
 import re
@@ -89,17 +95,27 @@ class ESQLBackend(TextQueryBackend):
     )
 
     # String matching operators. if none is appropriate eq_token is used.
-    startswith_expression: ClassVar[str] = "starts_with({field}, {value})"
-    endswith_expression: ClassVar[str] = "ends_with({field}, {value})"
+    startswith_expression: ClassVar[str] = "starts_with(TO_LOWER({field}), {value})"
+    endswith_expression: ClassVar[str] = "ends_with(TO_LOWER({field}), {value})"
     wildcard_match_expression: ClassVar[str] = (
-        "{field} like {value}"  # Special expression if wildcards can't be matched with the eq_token operator
+        "TO_LOWER({field}) like {value}"  # Special expression if wildcards can't be matched with the eq_token operator
+    )
+
+    case_sensitive_startswith_expression: ClassVar[Optional[str]] = (
+        "starts_with({field}, {value})"
+    )
+    case_sensitive_endswith_expression: ClassVar[Optional[str]] = (
+        "ends_with({field}, {value})"
+    )
+    case_sensitive_contains_expression: ClassVar[Optional[str]] = (
+        "{field} like *{value}*"
     )
 
     # Regular expressions
     # Regular expression query as format string with placeholders {field}, {regex}, {flag_x} where x
     # is one of the flags shortcuts supported by Sigma (currently i, m and s) and refers to the
     # token stored in the class variable re_flags.
-    re_expression: ClassVar[str] = '{field} rlike "{regex}"'
+    re_expression: ClassVar[str] = 'TO_LOWER({field}) rlike "{regex}"'
     re_escape_char: ClassVar[str] = (
         "\\"  # Character used for escaping in regular expressions
     )
@@ -541,3 +557,82 @@ class ESQLBackend(TextQueryBackend):
 
     def finalize_output_siem_rule_ndjson(self, queries: List[Dict]) -> List[List[Dict]]:
         return list(queries)
+
+    def convert_value_str(
+        self, s: SigmaString, state: ConversionState, enforce_lowercase: bool = False
+    ) -> str:
+        """Convert a SigmaString into a plain string which can be used in query."""
+        converted = s.convert(
+            self.escape_char,
+            self.wildcard_multi,
+            self.wildcard_single,
+            self.str_quote + self.add_escaped,
+            self.filter_chars,
+        )
+        if enforce_lowercase:
+            converted = converted.lower()
+        if self.decide_string_quoting(s):
+            return self.quote_string(converted)
+        else:
+            return converted
+
+    def convert_condition_field_eq_val_str(
+        self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
+    ) -> Union[str, DeferredQueryExpression]:
+        """Conversion of field = string value expressions"""
+        try:
+            if (  # Check conditions for usage of 'startswith' operator
+                self.startswith_expression
+                is not None  # 'startswith' operator is defined in backend
+                and cond.value.endswith(
+                    SpecialChars.WILDCARD_MULTI
+                )  # String ends with wildcard
+                and (
+                    self.startswith_expression_allow_special
+                    or not cond.value[:-1].contains_special()
+                )  # Remainder of string doesn't contains special characters or it's allowed
+            ):
+                expr = (
+                    self.startswith_expression
+                )  # If all conditions are fulfilled, use 'startswith' operator instead of equal token
+                value = cond.value[:-1]
+            elif (  # Same as above but for 'endswith' operator: string starts with wildcard and doesn't contains further special characters
+                self.endswith_expression is not None
+                and cond.value.startswith(SpecialChars.WILDCARD_MULTI)
+                and (
+                    self.endswith_expression_allow_special
+                    or not cond.value[1:].contains_special()
+                )
+            ):
+                expr = self.endswith_expression
+                value = cond.value[1:]
+            elif (  # contains: string starts and ends with wildcard
+                self.contains_expression is not None
+                and cond.value.startswith(SpecialChars.WILDCARD_MULTI)
+                and cond.value.endswith(SpecialChars.WILDCARD_MULTI)
+                and (
+                    self.contains_expression_allow_special
+                    or not cond.value[1:-1].contains_special()
+                )
+            ):
+                expr = self.contains_expression
+                value = cond.value[1:-1]
+            elif (  # wildcard match expression: string contains wildcard
+                self.wildcard_match_expression is not None
+                and cond.value.contains_special()
+            ):
+                expr = self.wildcard_match_expression
+                value = cond.value
+            else:
+                expr = self.eq_expression
+                value = cond.value
+            return expr.format(
+                field=self.escape_and_quote_field(cond.field),
+                value=self.convert_value_str(value, state, enforce_lowercase=True),
+                regex=self.convert_value_re(value.to_regex(self.add_escaped_re), state),
+                backend=self,
+            )
+        except TypeError:  # pragma: no cover
+            raise NotImplementedError(
+                "Field equals string value expressions with strings are not supported by the backend."
+            )
