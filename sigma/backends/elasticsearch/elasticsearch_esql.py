@@ -9,7 +9,7 @@ from sigma.conditions import (
     ConditionNOT,
     ConditionFieldEqualsValueExpression,
 )
-from sigma.types import CompareOperators, SpecialChars
+from sigma.types import CompareOperators, SpecialChars, SigmaString
 from sigma.data.mitre_attack import mitre_attack_tactics, mitre_attack_techniques
 import sigma
 import re
@@ -100,7 +100,7 @@ class ESQLBackend(TextQueryBackend):
     wildcard_match_expression: ClassVar[str] = (
         "TO_LOWER({field}) like {value}"  # Special expression if wildcards can't be matched with the eq_token operator
     )
-
+    case_sensitive_match_expression: ClassVar[Optional[str]] = "{field}=={value}"
     case_sensitive_startswith_expression: ClassVar[Optional[str]] = (
         "starts_with({field}, {value})"
     )
