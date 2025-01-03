@@ -624,7 +624,7 @@ class ESQLBackend(TextQueryBackend):
                 expr = self.wildcard_match_expression
                 value = cond.value
             else:
-                expr = self.eq_expression
+                expr = "TO_LOWER({field}){backend.eq_token}{value}"
                 value = cond.value
             return expr.format(
                 field=self.escape_and_quote_field(cond.field),

@@ -9,7 +9,31 @@ def esql_backend():
     return ESQLBackend()
 
 
-def test_elasticsearch_esql_and_expression(esql_backend: ESQLBackend):
+def test_elasticsearch_esql_and_expression_case_sensitive(esql_backend: ESQLBackend):
+    assert (
+        esql_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA|cased: valueA
+                    fieldB|cased: valueB
+                condition: sel
+        """
+            )
+        )
+        == [
+            'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+        ]
+    )
+
+
+def test_elasticsearch_esql_and_expression_case_insensitive(esql_backend: ESQLBackend):
     assert (
         esql_backend.convert(
             SigmaCollection.from_yaml(
@@ -28,7 +52,7 @@ def test_elasticsearch_esql_and_expression(esql_backend: ESQLBackend):
             )
         )
         == [
-            'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valueA" and TO_LOWER(fieldB)=="valueB"'
         ]
     )
 
@@ -53,7 +77,7 @@ def test_elasticsearch_esql_or_expression(esql_backend: ESQLBackend):
             )
         )
         == [
-            'from * metadata _id, _index, _version | where fieldA=="valueA" or fieldB=="valueB"'
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valueA" or TO_LOWER(fieldB)=="valueB"'
         ]
     )
 
