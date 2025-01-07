@@ -52,7 +52,7 @@ def test_elasticsearch_esql_and_expression_case_insensitive(esql_backend: ESQLBa
             )
         )
         == [
-            'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valueA" and TO_LOWER(fieldB)=="valueB"'
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" and TO_LOWER(fieldB)=="valueb"'
         ]
     )
 
@@ -77,12 +77,42 @@ def test_elasticsearch_esql_or_expression(esql_backend: ESQLBackend):
             )
         )
         == [
-            'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valueA" or TO_LOWER(fieldB)=="valueB"'
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" or TO_LOWER(fieldB)=="valueb"'
         ]
     )
 
 
-def test_elasticsearch_esql_and_or_expression(esql_backend: ESQLBackend):
+def test_elasticsearch_esql_and_or_expression_case_sensitive(esql_backend: ESQLBackend):
+    assert (
+        esql_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA|cased:
+                        - valueA1
+                        - valueA2
+                    fieldB|cased:
+                        - valueB1
+                        - valueB2
+                condition: sel
+        """
+            )
+        )
+        == [
+            'from * metadata _id, _index, _version | where (fieldA in ("valueA1", "valueA2")) and (fieldB in ("valueB1", "valueB2"))'
+        ]
+    )
+
+
+def test_elasticsearch_esql_and_or_expression_case_insensitive(
+    esql_backend: ESQLBackend,
+):
     assert (
         esql_backend.convert(
             SigmaCollection.from_yaml(
@@ -105,12 +135,41 @@ def test_elasticsearch_esql_and_or_expression(esql_backend: ESQLBackend):
             )
         )
         == [
-            'from * metadata _id, _index, _version | where (fieldA in ("valueA1", "valueA2")) and (fieldB in ("valueB1", "valueB2"))'
+            'from * metadata _id, _index, _version | where (TO_LOWER(fieldA) in ("valuea1", "valuea2")) and (TO_LOWER(fieldB) in ("valueb1", "valueb2"))'
         ]
     )
 
 
-def test_elasticsearch_esql_or_and_expression(esql_backend: ESQLBackend):
+def test_elasticsearch_esql_or_and_expression_case_sensitive(esql_backend: ESQLBackend):
+    assert (
+        esql_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel1:
+                    fieldA|cased: valueA1
+                    fieldB|cased: valueB1
+                sel2:
+                    fieldA|cased: valueA2
+                    fieldB|cased: valueB2
+                condition: 1 of sel*
+        """
+            )
+        )
+        == [
+            'from * metadata _id, _index, _version | where fieldA=="valueA1" and fieldB=="valueB1" or fieldA=="valueA2" and fieldB=="valueB2"'
+        ]
+    )
+
+
+def test_elasticsearch_esql_or_and_expression_case_insensitive(
+    esql_backend: ESQLBackend,
+):
     assert (
         esql_backend.convert(
             SigmaCollection.from_yaml(
@@ -132,12 +191,38 @@ def test_elasticsearch_esql_or_and_expression(esql_backend: ESQLBackend):
             )
         )
         == [
-            'from * metadata _id, _index, _version | where fieldA=="valueA1" and fieldB=="valueB1" or fieldA=="valueA2" and fieldB=="valueB2"'
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea1" and TO_LOWER(fieldB)=="valueb1" or TO_LOWER(fieldA)=="valuea2" and TO_LOWER(fieldB)=="valueb2"'
         ]
     )
 
 
-def test_elasticsearch_esql_in_expression(esql_backend: ESQLBackend):
+def test_elasticsearch_esql_in_expression_case_sensitive(esql_backend: ESQLBackend):
+    assert (
+        esql_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA|cased:
+                        - valueA
+                        - valueB
+                        - valueC
+                condition: sel
+        """
+            )
+        )
+        == [
+            'from * metadata _id, _index, _version | where fieldA in ("valueA", "valueB", "valueC")'
+        ]
+    )
+
+
+def test_elasticsearch_esql_in_expression_case_insensitive(esql_backend: ESQLBackend):
     assert (
         esql_backend.convert(
             SigmaCollection.from_yaml(
@@ -158,35 +243,7 @@ def test_elasticsearch_esql_in_expression(esql_backend: ESQLBackend):
             )
         )
         == [
-            'from * metadata _id, _index, _version | where fieldA in ("valueA", "valueB", "valueC")'
-        ]
-    )
-
-
-def test_elasticsearch_esql_wildcard_expressions_case_insensitive(
-    esql_backend: ESQLBackend,
-):
-    assert (
-        esql_backend.convert(
-            SigmaCollection.from_yaml(
-                """
-            title: Test
-            status: test
-            logsource:
-                category: test_category
-                product: test_product
-            detection:
-                sel:
-                    fieldA:
-                        - "val*A"
-                        - "*valueB"
-                        - "valueC*"
-                condition: sel
-        """
-            )
-        )
-        == [
-            'from * metadata _id, _index, _version | where TO_LOWER(fieldA) like "val*A" or ends_with(TO_LOWER(fieldA), "valueB") or starts_with(TO_LOWER(fieldA), "valueC")'
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA) in ("valuea", "valueb", "valuec")'
         ]
     )
 
@@ -219,6 +276,34 @@ def test_elasticsearch_esql_wildcard_expressions_case_sensitive(
     )
 
 
+def test_elasticsearch_esql_wildcard_expressions_case_insensitive(
+    esql_backend: ESQLBackend,
+):
+    assert (
+        esql_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA:
+                        - "val*A"
+                        - "*valueB"
+                        - "valueC*"
+                condition: sel
+        """
+            )
+        )
+        == [
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA) like "val*a" or ends_with(TO_LOWER(fieldA), "valueb") or starts_with(TO_LOWER(fieldA), "valuec")'
+        ]
+    )
+
+
 def test_elasticsearch_esql_regex_query(esql_backend: ESQLBackend):
     assert (
         esql_backend.convert(
@@ -238,7 +323,7 @@ def test_elasticsearch_esql_regex_query(esql_backend: ESQLBackend):
             )
         )
         == [
-            'from * metadata _id, _index, _version | where fieldA rlike "foo.*bar" and fieldB=="foo"'
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA) rlike "foo.*bar" and TO_LOWER(fieldB)=="foo"'
         ]
     )
 
@@ -283,7 +368,9 @@ def test_elasticsearch_esql_field_name_with_whitespace(esql_backend: ESQLBackend
         """
             )
         )
-        == ['from * metadata _id, _index, _version | where `field name`=="value"']
+        == [
+            'from * metadata _id, _index, _version | where TO_LOWER(`field name`)=="value"'
+        ]
     )
 
 
@@ -322,7 +409,7 @@ def test_elasticsearch_esql_set_state_index_string(esql_backend: ESQLBackend):
             )
         )
         == [
-            'from logs-test-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+            'from logs-test-* metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" and TO_LOWER(fieldB)=="valueb"'
         ]
     )
 
@@ -364,7 +451,7 @@ def test_elasticsearch_esql_set_state_index_list(esql_backend: ESQLBackend):
             )
         )
         == [
-            'from logs-test1-*,logs-test2-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+            'from logs-test1-*,logs-test2-* metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" and TO_LOWER(fieldB)=="valueb"'
         ]
     )
 
@@ -405,7 +492,7 @@ def test_elasticsearch_esql_set_state_index_list_single(esql_backend: ESQLBacken
             )
         )
         == [
-            'from logs-test-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+            'from logs-test-* metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" and TO_LOWER(fieldB)=="valueb"'
         ]
     )
 
@@ -447,7 +534,7 @@ def test_elasticsearch_esql_set_state_index_list_deduplicate(esql_backend: ESQLB
             )
         )
         == [
-            'from logs-test-* metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+            'from logs-test-* metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" and TO_LOWER(fieldB)=="valueb"'
         ]
     )
 
@@ -489,7 +576,7 @@ def test_elasticsearch_esql_set_state_index_list_wildcard(esql_backend: ESQLBack
             )
         )
         == [
-            'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"'
+            'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" and TO_LOWER(fieldB)=="valueb"'
         ]
     )
 
@@ -519,7 +606,7 @@ def test_elasticsearch_esql_ndjson(esql_backend: ESQLBackend):
             "hideChart": False,
             "isTextBasedQuery": True,
             "kibanaSavedObjectMeta": {
-                "searchSourceJSON": '{"query": {"esql": "from * metadata _id, _index, _version | where fieldA==\\"valueA\\" and fieldB==\\"valueB\\""}, "index": {"title": "*", "timeFieldName": "@timestamp", "sourceFilters": [], "type": "esql", "fieldFormats": {}, "runtimeFieldMap": {}, "allowNoIndex": false, "name": "*", "allowHidden": false}, "filter": []}'
+                "searchSourceJSON": '{"query": {"esql": "from * metadata _id, _index, _version | where TO_LOWER(fieldA)==\\"valuea\\" and TO_LOWER(fieldB)==\\"valueb\\""}, "index": {"title": "*", "timeFieldName": "@timestamp", "sourceFilters": [], "type": "esql", "fieldFormats": {}, "runtimeFieldMap": {}, "allowNoIndex": false, "name": "*", "allowHidden": false}, "filter": []}'
             },
             "sort": [["@timestamp", "desc"]],
             "timeRestore": False,
@@ -584,7 +671,7 @@ def test_elasticsearch_esql_siemrule(esql_backend: ESQLBackend):
             "exceptionsList": [],
             "type": "esql",
             "language": "esql",
-            "query": 'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"',
+            "query": 'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" and TO_LOWER(fieldB)=="valueb"',
         },
         "rule_type_id": "siem.esqlRule",
         "notify_when": "onActiveAlert",
@@ -641,7 +728,7 @@ def test_elasticsearch_esql_siemrule_ndjson(esql_backend: ESQLBackend):
         "setup": "",
         "type": "esql",
         "language": "esql",
-        "query": 'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"',
+        "query": 'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" and TO_LOWER(fieldB)=="valueb"',
         "actions": [],
     }
 
@@ -744,6 +831,6 @@ def test_elasticsearch_esql_siemrule_ndjson_with_threat(esql_backend: ESQLBacken
         "setup": "",
         "type": "esql",
         "language": "esql",
-        "query": 'from * metadata _id, _index, _version | where fieldA=="valueA" and fieldB=="valueB"',
+        "query": 'from * metadata _id, _index, _version | where TO_LOWER(fieldA)=="valuea" and TO_LOWER(fieldB)=="valueb"',
         "actions": [],
     }

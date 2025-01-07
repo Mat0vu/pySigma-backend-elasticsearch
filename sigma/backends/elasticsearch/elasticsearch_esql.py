@@ -100,7 +100,7 @@ class ESQLBackend(TextQueryBackend):
     wildcard_match_expression: ClassVar[str] = (
         "TO_LOWER({field}) like {value}"  # Special expression if wildcards can't be matched with the eq_token operator
     )
-    case_sensitive_match_expression: ClassVar[Optional[str]] = "{field}=={value}"
+    case_sensitive_match_expression: ClassVar[Optional[str]] = "{field} like {value}"
     case_sensitive_startswith_expression: ClassVar[Optional[str]] = (
         "starts_with({field}, {value})"
     )
