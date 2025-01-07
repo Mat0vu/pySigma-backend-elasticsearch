@@ -1,6 +1,7 @@
 from sigma.conversion.deferred import DeferredQueryExpression
 from sigma.conversion.state import ConversionState
 from sigma.rule import SigmaRule, SigmaRuleTag
+import ipaddress
 from sigma.conversion.base import TextQueryBackend
 from sigma.conditions import (
     ConditionItem,
@@ -577,6 +578,15 @@ class ESQLBackend(TextQueryBackend):
         else:
             return converted
 
+    def is_valid_ip(self, ip_str: str):
+        try:
+            # Try to create an IP address object
+            ipaddress.ip_address(ip_str)
+            return True
+        except ValueError:
+            # If a ValueError is raised, the IP address is invalid
+            return False
+
     def convert_condition_field_eq_val_str(
         self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
     ) -> Union[str, DeferredQueryExpression]:
@@ -625,8 +635,12 @@ class ESQLBackend(TextQueryBackend):
                 expr = self.wildcard_match_expression
                 value = cond.value
             else:
-                expr = "TO_LOWER({field}){backend.eq_token}{value}"
                 value = cond.value
+                if self.is_valid_ip(ip_str=value):
+                    expr = "{field}{backend.eq_token}{value}"
+                else:
+                    expr = "TO_LOWER({field}){backend.eq_token}{value}"
+
             return expr.format(
                 field=self.escape_and_quote_field(cond.field),
                 value=self.convert_value_str(value, state, enforce_lowercase=True),
@@ -724,7 +738,9 @@ class ESQLBackend(TextQueryBackend):
                             arg.value,
                             state,
                             enforce_lowercase=(
-                                not isinstance(cond.args[0].value, SigmaCasedString)
+                                False
+                                if isinstance(cond.args[0].value, SigmaCasedString)
+                                else True
                             ),
                         )
                         if isinstance(
