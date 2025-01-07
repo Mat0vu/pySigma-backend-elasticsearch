@@ -636,3 +636,32 @@ class ESQLBackend(TextQueryBackend):
             raise NotImplementedError(
                 "Field equals string value expressions with strings are not supported by the backend."
             )
+
+    def convert_condition_as_in_expression(
+        self, cond: Union[ConditionOR, ConditionAND], state: ConversionState
+    ) -> Union[str, DeferredQueryExpression]:
+        """Conversion of field in value list conditions."""
+        # TODO Check if case-sensitive
+        as_in_expression = self.field_in_list_expression.format(
+            field="TO_LOWER("
+            + self.escape_and_quote_field(cond.args[0].field)
+            + ")",  # The assumption that the field is the same for all argument is valid because this is checked before
+            op=(
+                self.or_in_operator
+                if isinstance(cond, ConditionOR)
+                else self.and_in_operator
+            ),
+            list=self.list_separator.join(
+                [
+                    (
+                        self.convert_value_str(arg.value, state, enforce_lowercase=True)
+                        if isinstance(
+                            arg.value, SigmaString
+                        )  # string escaping and qouting
+                        else str(arg.value)
+                    )  # value is number
+                    for arg in cond.args
+                ]
+            ),
+        )
+        return as_in_expression
