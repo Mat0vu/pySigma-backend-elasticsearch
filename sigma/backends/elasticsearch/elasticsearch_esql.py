@@ -724,9 +724,7 @@ class ESQLBackend(TextQueryBackend):
                             arg.value,
                             state,
                             enforce_lowercase=(
-                                False
-                                if isinstance(cond.args[0].value, SigmaCasedString)
-                                else True
+                                not isinstance(cond.args[0].value, SigmaCasedString)
                             ),
                         )
                         if isinstance(
