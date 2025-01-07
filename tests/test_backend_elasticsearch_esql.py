@@ -9,6 +9,70 @@ def esql_backend():
     return ESQLBackend()
 
 
+@pytest.fixture
+def esql_backend_with_siem_ndjson_postprocessing_pipeline():
+    pipeline = ProcessingPipeline.from_yaml(
+        """
+        vars:
+            index_names: 
+                - "filebeat-*"
+                - "logs-*"
+            schedule_interval: 5
+            schedule_interval_unit: m
+        postprocessing:
+            - type: template
+              template: |+
+                {%- set tags = [] -%}
+                {% for n in rule.tags %}
+                    {%- set tag_string = n.namespace ~ '-' ~ n.name -%}
+                    {%- set tags=tags.append(tag_string) -%}
+                {% endfor %}
+                {%- set rule_data = {
+                    "name": rule.title,
+                    "id": rule.id | lower,
+                    "author": [rule.author] if rule.author is string else rule.author or [],
+                    "description": rule.description if rule.description else "empty description",
+                    "references": rule.references,
+                    "enabled": true,
+                    "interval": pipeline.vars.schedule_interval|string ~ pipeline.vars.schedule_interval_unit,
+                    "from": "now-" ~ pipeline.vars.schedule_interval|string ~ pipeline.vars.schedule_interval_unit,
+                    "rule_id": rule.id | lower,
+                    "false_positives": rule.falsepositives,
+                    "immutable": false,
+                    "output_index": "",
+                    "meta": {
+                    "from": "1m"
+                    },
+                    "risk_score": rule.custom_attributes.risk_score,
+                    "severity": rule.level.name | string | lower if rule.level is not none else "low",
+                    "threat": rule.custom_attributes.threat,
+                    "severity_mapping": [],
+                    "to": "now",
+                    "version": 1,
+                    "max_signals": 100,
+                    "exceptions_list": [],
+                    "setup": "",
+                    "type": "esql",
+                    "note": "",
+                    "license": "DRL",
+                    "language": "esql",
+                    "index": pipeline.vars.index_names | list,
+                "query": query,
+                "tags": tags,
+                "actions": [],
+                "related_integrations": [],
+                "required_fields": [],
+                "risk_score_mapping": []
+                }
+                -%}
+                
+                {{ rule_data | tojson(indent=2) }}
+    """
+    )
+
+    return ESQLBackend(processing_pipeline=pipeline)
+
+
 def test_elasticsearch_esql_and_expression_case_sensitive(esql_backend: ESQLBackend):
     assert (
         esql_backend.convert(
@@ -733,7 +797,9 @@ def test_elasticsearch_esql_siemrule_ndjson(esql_backend: ESQLBackend):
     }
 
 
-def test_elasticsearch_esql_siemrule_ndjson_with_threat(esql_backend: ESQLBackend):
+def test_elasticsearch_esql_siemrule_ndjson_with_threat(
+    esql_backend_with_siem_ndjson_postprocessing_pipeline: ESQLBackend,
+):
     """Test for NDJSON output with embedded query string query."""
     rule = SigmaCollection.from_yaml(
         """
@@ -755,7 +821,9 @@ def test_elasticsearch_esql_siemrule_ndjson_with_threat(esql_backend: ESQLBacken
                 - attack.t1027
         """
     )
-    result = esql_backend.convert(rule, output_format="siem_rule_ndjson")
+
+    result = esql_backend_with_siem_ndjson_postprocessing_pipeline.convert(rule)
+
     assert result[0] == {
         "id": "c277adc0-f0c4-42e1-af9d-fab062992156",
         "name": "SIGMA - Test",
