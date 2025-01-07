@@ -100,6 +100,7 @@ class ESQLBackend(TextQueryBackend):
     wildcard_match_expression: ClassVar[str] = (
         "TO_LOWER({field}) like {value}"  # Special expression if wildcards can't be matched with the eq_token operator
     )
+    case_sensitive_eq_expression: ClassVar[Optional[str]] = "{field}=={value}"
     case_sensitive_match_expression: ClassVar[Optional[str]] = "{field} like {value}"
     case_sensitive_startswith_expression: ClassVar[Optional[str]] = (
         "starts_with({field}, {value})"
@@ -635,6 +636,70 @@ class ESQLBackend(TextQueryBackend):
         except TypeError:  # pragma: no cover
             raise NotImplementedError(
                 "Field equals string value expressions with strings are not supported by the backend."
+            )
+
+    def convert_condition_field_eq_val_str_case_sensitive(
+        self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
+    ) -> Union[str, DeferredQueryExpression]:
+        """Conversion of case-sensitive field = string value expressions"""
+        try:
+            if (  # Check conditions for usage of 'startswith' operator
+                self.case_sensitive_startswith_expression
+                is not None  # 'startswith' operator is defined in backend
+                and cond.value.endswith(
+                    SpecialChars.WILDCARD_MULTI
+                )  # String ends with wildcard
+                and (
+                    self.case_sensitive_startswith_expression_allow_special
+                    or not cond.value[:-1].contains_special()
+                )  # Remainder of string doesn't contains special characters or it's allowed
+            ):
+                expr = (
+                    self.case_sensitive_startswith_expression
+                )  # If all conditions are fulfilled, use 'startswith' operator instead of equal token
+                value = cond.value[:-1]
+            elif (  # Same as above but for 'endswith' operator: string starts with wildcard and doesn't contains further special characters
+                self.case_sensitive_endswith_expression is not None
+                and cond.value.startswith(SpecialChars.WILDCARD_MULTI)
+                and (
+                    self.case_sensitive_endswith_expression_allow_special
+                    or not cond.value[1:].contains_special()
+                )
+            ):
+                expr = self.case_sensitive_endswith_expression
+                value = cond.value[1:]
+            elif (  # contains: string starts and ends with wildcard
+                self.case_sensitive_contains_expression is not None
+                and cond.value.startswith(SpecialChars.WILDCARD_MULTI)
+                and cond.value.endswith(SpecialChars.WILDCARD_MULTI)
+                and (
+                    self.case_sensitive_contains_expression_allow_special
+                    or not cond.value[1:-1].contains_special()
+                )
+            ):
+                expr = self.case_sensitive_contains_expression
+                value = cond.value[1:-1]
+            elif (
+                self.case_sensitive_match_expression
+                and SpecialChars.WILDCARD_MULTI in cond.value
+            ):
+                expr = self.case_sensitive_match_expression
+                value = cond.value
+            elif self.case_sensitive_eq_expression is not None:
+                expr = self.case_sensitive_eq_expression
+                value = cond.value
+            else:
+                raise NotImplementedError(
+                    "Case-sensitive string matching is not supported by backend."
+                )
+            return expr.format(
+                field=self.escape_and_quote_field(cond.field),
+                value=self.convert_value_str(value, state),
+                regex=self.convert_value_re(value.to_regex(self.add_escaped_re), state),
+            )
+        except TypeError:  # pragma: no cover
+            raise NotImplementedError(
+                "Case-sensitive field equals string value expressions with strings are not supported by the backend."
             )
 
     def convert_condition_as_in_expression(
