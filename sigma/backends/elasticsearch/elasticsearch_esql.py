@@ -9,7 +9,7 @@ from sigma.conditions import (
     ConditionNOT,
     ConditionFieldEqualsValueExpression,
 )
-from sigma.types import CompareOperators, SpecialChars, SigmaString
+from sigma.types import CompareOperators, SpecialChars, SigmaCasedString, SigmaString
 from sigma.data.mitre_attack import mitre_attack_tactics, mitre_attack_techniques
 import sigma
 import re
@@ -641,11 +641,12 @@ class ESQLBackend(TextQueryBackend):
         self, cond: Union[ConditionOR, ConditionAND], state: ConversionState
     ) -> Union[str, DeferredQueryExpression]:
         """Conversion of field in value list conditions."""
-        # TODO Check if case-sensitive
-        as_in_expression = self.field_in_list_expression.format(
-            field="TO_LOWER("
-            + self.escape_and_quote_field(cond.args[0].field)
-            + ")",  # The assumption that the field is the same for all argument is valid because this is checked before
+        return self.field_in_list_expression.format(
+            field=(
+                self.escape_and_quote_field(cond.args[0].field)
+                if isinstance(cond.args[0].value, SigmaCasedString)
+                else "TO_LOWER(" + self.escape_and_quote_field(cond.args[0].field) + ")"
+            ),  # The assumption that the field is the same for all argument is valid because this is checked before
             op=(
                 self.or_in_operator
                 if isinstance(cond, ConditionOR)
@@ -654,7 +655,15 @@ class ESQLBackend(TextQueryBackend):
             list=self.list_separator.join(
                 [
                     (
-                        self.convert_value_str(arg.value, state, enforce_lowercase=True)
+                        self.convert_value_str(
+                            arg.value,
+                            state,
+                            enforce_lowercase=(
+                                False
+                                if isinstance(cond.args[0].value, SigmaCasedString)
+                                else True
+                            ),
+                        )
                         if isinstance(
                             arg.value, SigmaString
                         )  # string escaping and qouting
@@ -664,4 +673,3 @@ class ESQLBackend(TextQueryBackend):
                 ]
             ),
         )
-        return as_in_expression
