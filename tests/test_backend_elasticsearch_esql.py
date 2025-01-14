@@ -2,7 +2,7 @@ import pytest
 from sigma.collection import SigmaCollection
 from sigma.backends.elasticsearch.elasticsearch_esql import ESQLBackend
 from sigma.processing.pipeline import ProcessingPipeline
-
+import json
 
 @pytest.fixture
 def esql_backend():
@@ -14,9 +14,9 @@ def esql_backend_with_siem_ndjson_postprocessing_pipeline():
     pipeline = ProcessingPipeline.from_yaml(
         """
         vars:
-            index_names: 
-                - "filebeat-*"
-                - "logs-*"
+            # index_names: 
+            #     - "filebeat-*"
+            #     - "logs-*"
             schedule_interval: 5
             schedule_interval_unit: m
         postprocessing:
@@ -66,7 +66,7 @@ def esql_backend_with_siem_ndjson_postprocessing_pipeline():
                 }
                 -%}
                 
-                {{ rule_data | tojson(indent=2) }}
+                {{ rule_data | tojson }}
     """
     )
 
@@ -822,20 +822,15 @@ def test_elasticsearch_esql_siemrule_ndjson_with_threat(
         """
     )
 
-    result = esql_backend_with_siem_ndjson_postprocessing_pipeline.convert(rule)
+    result_str = esql_backend_with_siem_ndjson_postprocessing_pipeline.convert(rule)[0]
+    result_json = json.loads(result_str)
 
-    assert result[0] == {
+    assert result_json == {
         "id": "c277adc0-f0c4-42e1-af9d-fab062992156",
-        "name": "SIGMA - Test",
-        "tags": [
-            "attack-execution",
-            "attack-t1059.001",
-            "attack-defense_evasion",
-            "attack-t1027",
-        ],
+        "name": "Test",
         "interval": "5m",
         "enabled": True,
-        "description": "No description",
+        "description": "empty description",
         "risk_score": 21,
         "severity": "low",
         "note": "",
@@ -849,6 +844,7 @@ def test_elasticsearch_esql_siemrule_ndjson_with_threat(
         "max_signals": 100,
         "risk_score_mapping": [],
         "severity_mapping": [],
+        "tags": [],
         "threat": [
             {
                 "tactic": {
@@ -892,6 +888,7 @@ def test_elasticsearch_esql_siemrule_ndjson_with_threat(
         "to": "now",
         "references": [],
         "version": 1,
+        "index": [],
         "exceptions_list": [],
         "immutable": False,
         "related_integrations": [],

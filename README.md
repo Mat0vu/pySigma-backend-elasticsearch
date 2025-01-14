@@ -160,7 +160,7 @@ postprocessing:
       {%- set rule_data = {
         "name": rule.title,
         "id": rule.id | lower,
-        "author": [rule.author] if rule.author is string else rule.author or "",
+        "author": [rule.author] if rule.author is string else rule.author or [],
         "description": rule.description if rule.description else "empty description",
         "references": rule.references,
         "enabled": true,
