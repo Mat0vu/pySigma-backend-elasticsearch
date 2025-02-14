@@ -4,6 +4,7 @@ from typing import Iterable, ClassVar, Dict, List, Optional, Pattern, Tuple, Uni
 
 from sigma.conversion.state import ConversionState
 from sigma.rule import SigmaRule, SigmaRuleTag
+from sigma.correlations import SigmaCorrelationRule
 from sigma.conversion.base import TextQueryBackend
 from sigma.conversion.deferred import DeferredQueryExpression
 from sigma.conditions import (
@@ -349,6 +350,8 @@ class EqlBackend(TextQueryBackend):
         # TODO: implement the per-query output for the output format {{ format }} here. Usually, the generated query is
         # embedded into a template, e.g. a JSON format with additional information from the Sigma rule.
         # TODO: proper type annotation.
+        if isinstance(rule, SigmaCorrelationRule):
+            return f"{query}"
         return f"any where {query}"
 
     def finalize_output_default(self, queries: List[str]) -> Any:
