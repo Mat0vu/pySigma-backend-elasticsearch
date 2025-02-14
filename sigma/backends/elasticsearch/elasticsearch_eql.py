@@ -349,7 +349,7 @@ class EqlBackend(TextQueryBackend):
         # TODO: implement the per-query output for the output format {{ format }} here. Usually, the generated query is
         # embedded into a template, e.g. a JSON format with additional information from the Sigma rule.
         # TODO: proper type annotation.
-        return f"{query}"
+        return f"any where {query}"
 
     def finalize_output_default(self, queries: List[str]) -> Any:
         # TODO: implement the output finalization for all generated queries for the format {{ format }} here. Usually,
