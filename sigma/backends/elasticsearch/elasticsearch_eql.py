@@ -164,7 +164,7 @@ class EqlBackend(TextQueryBackend):
     correlation_search_multi_rule_query_expression_joiner: ClassVar[str] = " \n "
 
     default_correlation_query: ClassVar[str] = {
-        "sequence": "sequence \n [{search}] {aggregate} {condition}",
+        "sequence": "sequence with maxspan={timespan} \n [{search}] {aggregate} {condition}",
         "sample": "sample {condition} \n [{search}] {aggregate}",
     }
 
