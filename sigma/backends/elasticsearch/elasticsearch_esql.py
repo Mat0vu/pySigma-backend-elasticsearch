@@ -247,24 +247,13 @@ class ESQLBackend(TextQueryBackend):
             "CRITICAL": 99,
         }
 
-    def flatten_list(self, nested_list):
-        flat_list = []
-        for item in nested_list:
-            if isinstance(item, list):
-                flat_list.extend(
-                    self.flatten_list(item)
-                )  # Recursively flatten the sublist
-            else:
-                flat_list.append(item)  # Append the string
-        return flat_list
-
     def preprocess_indices(self, indices: List[str]) -> str:
         if not indices:
             return self.state_defaults["index"]
 
         if self.wildcard_multi in indices:
             return self.wildcard_multi
-        indices = self.flatten_list(nested_list=indices)
+
         if len(indices) == 1:
             return indices[0]
 
@@ -274,7 +263,7 @@ class ESQLBackend(TextQueryBackend):
         # Sort the indices to ensure a consistent order as sets are arbitrary ordered
         indices.sort()
 
-        return ", ".join(indices)
+        return ",".join(indices)
 
     def finalize_query(
         self,
