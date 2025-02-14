@@ -33,6 +33,7 @@ class ESQLBackend(TextQueryBackend):
         "kibana_ndjson": "Kibana ES|QL queries in NDJSON Format.",
         "siem_rule": "Elastic Security ES|QL queries as SIEM Rules in JSON Format.",
         "siem_rule_ndjson": "Elastic Security ES|QL queries as SIEM Rules in NDJSON Format.",
+        "single_files": "One file per rule",
     }
     requires_pipeline: bool = True
 
@@ -318,6 +319,11 @@ class ESQLBackend(TextQueryBackend):
             self.finalize_output_threat_model(rule.tags)
         )
         return super().finalize_query(rule, query, index, state, output_format)
+
+    def finalize_query_single_files(
+        self, rule: SigmaRule, query: str, index: int, state: ConversionState
+    ) -> Dict:
+        return query
 
     def finalize_query_kibana_ndjson(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
