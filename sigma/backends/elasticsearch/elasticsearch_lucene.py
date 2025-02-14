@@ -134,6 +134,10 @@ class LuceneBackend(TextQueryBackend):
     # List element separator
     list_separator: ClassVar[str] = " OR "
 
+    # Check if a field exists in the log not the value
+    field_exists_expression: ClassVar[str] = "_exists_:{field}"
+    field_not_exists_expression: ClassVar[str] = "NOT _exists_:{field}"
+    
     # Value not bound to a field
     # Expression for string value not bound to a field as format string with placeholder {value}
     unbound_value_str_expression: ClassVar[str] = "*{value}*"
@@ -429,13 +433,21 @@ class LuceneBackend(TextQueryBackend):
                 },
                 "maxSignals": 100,
                 "riskScore": (
-                    self.severity_risk_mapping[rule.level.name]
+                    0
                     if rule.level is not None
-                    else 21
+                    and str(rule.level.name).lower() == "informational"
+                    else (
+                        self.severity_risk_mapping[rule.level.name]
+                        if rule.level is not None
+                        else 21
+                    )
                 ),
                 "riskScoreMapping": [],
                 "severity": (
-                    str(rule.level.name).lower() if rule.level is not None else "low"
+                    "low"
+                    if rule.level is None
+                    or str(rule.level.name).lower() == "informational"
+                    else str(rule.level.name).lower()
                 ),
                 "severityMapping": [],
                 "threat": list(self.finalize_output_threat_model(rule.tags)),

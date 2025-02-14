@@ -247,6 +247,19 @@ class ESQLBackend(TextQueryBackend):
             "CRITICAL": 99,
         }
 
+    def flatten_list_of_indices(
+        self, nested_list: List[Union[str, List[str]]]
+    ) -> List[str]:
+        flat_list = []
+        for item in nested_list:
+            if isinstance(item, list):
+                flat_list.extend(
+                    self.flatten_list_of_indices(item)
+                )  # Recursively flatten the sublist
+            else:
+                flat_list.append(item)  # Append the string
+        return flat_list
+
     def preprocess_indices(self, indices: List[str]) -> str:
         if not indices:
             return self.state_defaults["index"]
@@ -254,11 +267,11 @@ class ESQLBackend(TextQueryBackend):
         if self.wildcard_multi in indices:
             return self.wildcard_multi
 
+        indices = self.flatten_list_of_indices(nested_list=indices)
         if len(indices) == 1:
             return indices[0]
 
-        # Deduplicate sources using a set
-        indices = list(set(indices))
+        indices = list(set(indices))  # Deduplicate
 
         # Sort the indices to ensure a consistent order as sets are arbitrary ordered
         indices.sort()
@@ -504,12 +517,19 @@ class ESQLBackend(TextQueryBackend):
                 rule.description if rule.description is not None else "No description"
             ),
             "risk_score": (
-                self.severity_risk_mapping[rule.level.name]
+                0
                 if rule.level is not None
-                else 21
+                and str(rule.level.name).lower() == "informational"
+                else (
+                    self.severity_risk_mapping[rule.level.name]
+                    if rule.level is not None
+                    else 21
+                )
             ),
             "severity": (
-                str(rule.level.name).lower() if rule.level is not None else "low"
+                "low"
+                if rule.level is None or str(rule.level.name).lower() == "informational"
+                else str(rule.level.name).lower()
             ),
             "note": "",
             "license": "DRL",
